@@ -1,10 +1,10 @@
 ---
-title: "Priceonomics"
+title: "PE"
 author: "Ian Colrick"
 output: html_document
 ---
 
-# Priceonomics Assessment
+#  Practice Assignment
 ## Segmenting dataset
 
 We will first load required packages and load dataset.
@@ -12,7 +12,7 @@ We will first load required packages and load dataset.
 library(dplyr)
 library(ggplot2)
 library(ggExtra)
-data <- read.csv("Data+for+TreefortBnB+Puzzle.csv")
+data <- read.csv("data.csv")
 ```
 
 We will then sort the dataset by cities by median booking price based off the top 100 cities with highest median booking price.
