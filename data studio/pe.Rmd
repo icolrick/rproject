@@ -1,0 +1,57 @@
+---
+title: "Priceonomics"
+author: "Ian Colrick"
+output: html_document
+---
+
+# Priceonomics Assessment
+## Segmenting dataset
+
+We will first load required packages and load dataset.
+```{r, echo}
+library(dplyr)
+library(ggplot2)
+library(ggExtra)
+data <- read.csv("Data+for+TreefortBnB+Puzzle.csv")
+```
+
+We will then sort the dataset by cities by median booking price based off the top 100 cities with highest median booking price.
+
+```{r}
+a <- data %>%
+    select(City, X..Price)  %>%
+    group_by(City) %>%
+    summarise(median = median(X..Price)) %>%
+    mutate(City = factor(City, City)) %>%
+    arrange(desc(median))  %>%
+    top_n(100)
+
+a
+```
+
+## Visualizing average of medians...
+
+As a bonus, we can briefly look at how the top 25 cities relate to one another. By calculating an average of median booking prices, we can segment cities into booking prices which are above average and below average. 
+
+```{r}
+b <- a %>% top_n(25)
+
+b$median <- round((b$median - mean(b$median))/sd(b$median), 2)
+b$median_type <- ifelse(b$median < 0, "below", "above")
+b$median_type <- factor(b$median_type, unique(b$median_type))
+
+g <- ggplot(b, aes(reorder(City, median), median, median)) +
+    geom_point(stat='identity', aes(col = median_type), size = 6)  +
+    geom_text(aes(label = median)) +
+    scale_color_manual(name = "Median Housing Price",
+                     labels = c("Above Average", "Below Average"),
+                     values = c("above" = "#00ba38", "below" = "#f8766d")) +
+    labs(title = "Diverging Dot Plot of top 25 cities, by median booking price",
+         subtitle = "Normalized median rent",
+         x = "City") +
+     ylim(-1, 4.5) +
+     coord_flip()
+
+g
+```
+

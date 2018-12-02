@@ -1,0 +1,286 @@
+---
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+title: "PF Assessment"
+author: "Ian Colrick"
+output: pdf
+---
+
+# PF Assessment
+
+## SQL
+
+### Question 1
+
+```{sql eval = FALSE}
+SELECT ProviderID FROM Provider
+   WHERE Specialty = "Cardiology" 
+```
+
+### Question 2
+
+```{sql eval = FALSE}
+SELECT DISTINCT PracticeID FROM Provider
+   WHERE Specialty = "Primary Care" OR Specialty = "Endocrinology"
+```
+
+### Question 3
+
+```{sql eval = FALSE}
+SELECT COUNT(PrescriptionID) FROM Prescription
+   ORDER BY BrandName
+
+```
+ 
+### Question 4
+
+```{sql eval = FALSE}
+SELECT SUM(NumChartsCreated) FROM Provider
+   ORDER BY PracticeID
+```
+
+### Question 5
+
+```{sql eval = FALSE}
+SELECT COUNT(DISTINCT(PatientID)) FROM Provider
+   JOIN Prescription
+   USING ProviderID
+WHERE Specialty = "Primary Care"
+ORDER BY BrandName
+```
+
+### Question 6
+
+```{sql eval = FALSE}
+SELECT PracticeID,
+SUM(DISTINCT(PracticeID) FILTER(JoinDate <= 3/1/2011) as cohort_1,
+    SUM(DISTINCT(PracticeID) FILTER(JoinDate >= 3/2/2011 and JoinDate <= 7/21/2012) as cohort_2,
+        SUM(DISTINCT(PracticeID) FILTER(JoinDate >= 7/22/2012) as cohort_3
+            FROM Provider
+            ORDER BY PracticeID
+```
+
+### Question 7
+
+```{sql eval = FALSE}
+SELECT ProviderID, NumChartsCreated from Prescription
+  JOIN  Provider
+  USING ProviderID
+WHERE MIN(PrescriptionID) = 1
+ORDER BY ProviderID
+```
+
+## Analysis & Presentation
+
+```{r setup, cache = F}
+knitr::opts_knit$set(root.dir = '/Users/iancolrick/rproject/trainingSet', error = FALSE)
+```
+
+Let's load appropriate packages first. 
+
+```{r}
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(visdat)
+library(tidyverse)
+library(maps)
+library(treemap) 
+```
+
+Let's take a quick look at all variables included in the PF dataset. 
+
+```{r eval = FALSE}
+masterData <- list.files(pattern = "*Sync*")
+masterData <- lapply(masterData, fread)
+masterData <- do.call(rbindlist, masterData)
+glimpse(masterData)
+```
+Based off this broad swath of variables, we can see patient-level biomedical measurements to precription-level, to diagnoses and further. Let's look at a particular example.  
+
+```{r}
+patientData <- list.files(pattern = "*Patient*")
+patientData <- lapply(patientData, fread)
+patientData <- do.call(rbind.data.frame, c(patientData, fill = TRUE))
+patientData <- patientData %>% merge
+```
+
+```{r, echo = FALSE}
+vis_dat(patientData)
+```
+
+From the visual, we can robust data fields in among the 10,478 observations and
+17 variables around the patient's biomedical data, to smoking status, to other
+basic information about the member. Although a limitation may include missing values around the patient's condition
+and created year of observation. 
+
+Let's look at the transcript level information around the patient. 
+
+```{r, echo = FALSE}
+transcriptData <- list.files(pattern = "*Transcript*")
+transcriptData <- lapply(transcriptData, fread)
+transcriptData <- do.call(rbind.data.frame, transcriptData)
+transcriptData <- transcriptData %>% reduce(merge, by = "TranscriptGuid")
+glimpse(transcriptData)
+```
+
+Similarly we see 19 variables, 627,145 observations combining biomedical data with provider level
+details and details around patient visits. 
+
+### Summary Statistics
+
+We can very quickly visual biomedical indicators of patients over the course of
+years, and this can be specified to set cohorts, all encompassing populations,
+or individual patients. 
+
+```{r, echo = FALSE} 
+transcriptData.sum <- transcriptData %>%
+  select(Weight, BMI, VisitYear) %>% 
+  group_by(VisitYear)  %>%
+  summarise_all(funs(min = min, 
+                      q25 = quantile(. , 0.25), 
+                      median = median, 
+                      q75 = quantile(. , 0.75), 
+                      max = max,
+                      mean = mean, 
+                      sd = sd))
+```
+
+Not only through tables, but graphs can the PF dataset allow for inferences on
+physician specialty spread over across net visits of any given patient
+population. 
+
+```{r}
+transcriptData.specialty <- transcriptData %>%
+  select(PhysicianSpecialty) %>%
+  na.omit()  %>%
+  group_by(PhysicianSpecialty)  %>%
+  mutate(count = n()) %>%
+  distinct(count)
+
+plot_specialty <- treemap(
+  transcriptData.specialty,
+  index = c("PhysicianSpecialty", "count"),
+  vSize = "count",
+  vColor = "count",
+  type = "value",
+  title = "Proportion of physician specialty for all visits" 
+)
+```
+
+
+```{r, echo = FALSE}
+plot_specialty <- treemap(
+  transcriptData.specialty,
+  index = c("PhysicianSpecialty", "count"),
+  vSize = "count",
+  vColor = "count",
+  type = "value",
+  title = "Proportion of physician specialty for all visits" 
+)
+```
+
+
+### Temporality
+
+Thanks to temporality included, we can look at how events like smoking behavior
+change vary over time.  
+
+```{r}
+patientData.years <- patientData %>%
+    select(EffectiveYear)  %>%
+    na.omit() %>%
+    group_by(EffectiveYear)         %>%
+    mutate(count = n())   %>%
+    distinct(count)
+
+year_plot = ggplot(patientData.years, aes(x = EffectiveYear, y = count)) +
+    geom_bar(stat = "identity") +
+    xlim(1980, 2010) +
+    ggtitle("Changes in patient smoking status by effective year, over the last 30 years") + 
+    theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r, echo = FALSE}
+year_plot
+```
+
+#### Example: Gender Impact on Smoking Behavior Change
+
+This is powerful, because we can make inferences based off many other variables
+included in this dataset and evaluate temporality as appropriate. For example,
+we can look at the impact of gender on smoking behavior change over time. 
+
+```{r, echo}
+patientData.years.gender <- patientData %>%
+    select(EffectiveYear, Gender.x)  %>%
+    na.omit() %>%
+    group_by(EffectiveYear)         %>%
+    mutate(count = n())   %>%
+    distinct(count, Gender.x)
+    
+year_gender_plot = ggplot(patientData.years.gender, aes(x = EffectiveYear, y = count)) +
+    geom_bar(stat = "identity") +
+    geom_smooth(aes(colour = Gender.x), method = "glm") + 
+    xlim(1980, 2010) +
+    ylim(0, 20) + 
+    ggtitle("Changes in patient smoking status by effective year by gender, over the last 30 years") + 
+    theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r, echo = FALSE}
+year_gender_plot
+```
+  
+  
+### Geographical Dimensions
+
+We can additionally look at variables geographically, from patient counts and
+medication level use would similarly be possible. 
+
+```{r}
+patientData.map <- patientData %>%
+    select(State.x)  %>%
+    group_by(State.x)         %>%
+    mutate(count = n())   %>%
+    distinct(count)
+
+patientData.map$State.x <- sapply(
+           (state.name[match(patientData.map$State.x , state.abb)]), 
+           tolower)
+
+names(patientData.map) = c("region", "count")
+
+us_state_map = map_data('state')
+map_data = merge(patientData.map, us_state_map, by = 'region')
+map_data = arrange(map_data, order)
+
+map_plot = ggplot(map_data, aes(x = long, y = lat, group = group)) +
+     geom_polygon(aes(fill = count)) + 
+     ggtitle('Count of patients per state') + 
+     theme(plot.title = element_text(hjust = 0.5)) + 
+     scale_fill_distiller(palette = "GnBu")
+```
+
+     
+```{r, echo = FALSE} 
+mapPlot
+```
+
+
+### Conclusion
+
+As we can see, the PF dataset is inclusive of breadth of variables and wide-ranging
+dimensions such as temporality and geography, that allow for robust data
+analysis of patients as it relates to behavior, biomedical information, or
+medication use. 
+
+
+
+
+
